@@ -1,0 +1,17 @@
+# Installed by the installer — never commit any of this
+.venv/
+tabbyAPI/
+models/
+logs/
+results/
+
+# Secrets and local overrides
+api_tokens.yml
+config.yml
+config.yaml
+.env
+
+# Housekeeping
+__pycache__/
+*.pyc
+*.log

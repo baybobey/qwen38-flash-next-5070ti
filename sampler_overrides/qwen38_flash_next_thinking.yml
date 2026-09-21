@@ -1,0 +1,49 @@
+# Qwen3.8-Flash-Next — target sampler preset, FORCED.
+# ============================================================================
+# Activated by `sampling.override_preset: qwen38_flash_next_thinking` in
+# config.yml. TabbyAPI resolves this folder relative to the server CWD (the
+# tabbyAPI clone) and main.py exits at startup if the named preset is missing,
+# so the file must live in tabbyAPI/sampler_overrides/ — both serve scripts and
+# the installer copy it there automatically.
+#
+# Why every parameter is forced: without a preset this build warns at startup
+#   "No sampler override preset is configured (sampling.override_preset), so
+#    sampling parameters have no fallback values. Requests that omit them run
+#    untruncated: temperature 1.0, top_k 0, top_p 1.0, min_p 0."
+# and clients that send no sampling parameters run with top_k 0 / top_p 1.0 —
+# untruncated tail sampling, which degrades into token soup / language drift as
+# the context grows (HF discussion turboderp/Qwen3.8-Flash-Next-exl3 #5).
+#
+# With force: true these values win over whatever a client sends, so no harness
+# can push the model off its trained sampler (temperature 0.3 auxiliary calls,
+# top_k 0, repetition penalty > 1.0, ...).
+#
+# Caveat in this tabbyAPI build: apply_forced_sampler_overrides() skips falsy
+# overrides, so min_p 0.0 and presence_penalty 0.0 cannot be forced back if a
+# client explicitly sends a non-zero value. Both are the built-in defaults
+# otherwise, so this only affects clients that actively send them.
+# ============================================================================
+
+temperature:
+  override: 1.0
+  force: true
+
+top_k:
+  override: 20
+  force: true
+
+top_p:
+  override: 0.95
+  force: true
+
+min_p:
+  override: 0.0
+  force: true
+
+presence_penalty:
+  override: 0.0
+  force: true
+
+repetition_penalty:
+  override: 1.0
+  force: true
