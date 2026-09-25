@@ -46,7 +46,7 @@ Bu dizine (ve varsayılan olarak `$HOME/models/Qwen3.8-Flash-Next` altına model
 - `.venv/` — torch `2.9.0+cu128`, exllamav3 `1.5.1` (Python sürümünüze uyan hazır
   derlenmiş wheel; uygun wheel yoksa JIT wheel + CUDA toolkit), TabbyAPI bağımlılıkları
   ve `hf` CLI
-- `tabbyAPI/` — `7208273` commit'ine sabitlenmiş klon
+- `tabbyAPI/` — `f07131c` commit'ine sabitlenmiş klon
 - `tabbyAPI/config.yml` — `configs/config-<N>gpu.yml` dosyasından yazılır; `models/<ad>`
   sembolik bağlantısı ve zorunlu (force) sampler preset'i kurulur
 - `tabbyAPI/api_tokens.yml` — rastgele üretilmiş `api_key` ve `admin_key`, `chmod 600`, hiçbir
@@ -141,10 +141,10 @@ kullanın ve yanında ikinci bir model çalıştırmayın.
   zarar verir.
 - `chunk_size` — burada 2048 (2 GPU) / 3072 (1 GPU); büyütmek prefill'i hızlandırır,
   ta ki PLE workspace ayırması prefill ortasında OOM alana kadar.
-- `autosplit_reserve` — autosplit'in boş bıraktığı pay (kart başına MB). 2 GPU'da kart
-  başına 1024 MB, uzun prefill'lerde 40 MiB'lik PLE workspace'ini güvende tutar. 1 GPU'da
-  küçük tutun (96 MB): sığdırma zaten sıkı ve ölçülen tek-GPU sayıları bu varsayılanla
-  alındı.
+- `autosplit_reserve` — autosplit'in boş bıraktığı pay (kart başına MB). Her iki düzende de
+  **küçük (96 MB) tutun**: exllamav3 1.5.x, her MoE katmanının en kötü durum prefill geçici
+  belleğini (~2 GPU'da kart başına 700-750 MiB) cihaz bütçesinin içinde ayırır; eski 1024 MB
+  değeri 2 GPU yüklemesini "Insufficient VRAM in split for model and cache" hatasıyla düşürür.
 - `draft_mode: mtp` (yalnızca 2 GPU) + `dynamic_draft: true` ve 8 token üst sınırı —
   modelin kendi MTP başlığı; 2 GPU'da gerçek kazanç, 1 GPU'da ölçülebilir bir şey yok.
 - `cache_mode: 6,6` — 262144 bağlamda 6-bit K/V. Bağlamı düşürmeyin.
@@ -157,11 +157,12 @@ kullanın ve yanında ikinci bir model çalıştırmayın.
 
 ## Sorun giderme
 
-- **Yüklemede "Insufficient VRAM"** — `cpu_moe_split_experts` değerini 8–16 düşürün ya da
-  `cache_size` değerini azaltın. Bu yığında bağlamı 262144'ün altına indirmeyin.
+- **Yüklemede "Insufficient VRAM"** — önce `autosplit_reserve` değerini kontrol edin:
+  `[96, 96]` olmalı (daha büyük bir pay exllamav3 1.5.x ile 2 GPU'da çalışmaz, bkz. ayar
+  notları). Sonra `cpu_moe_split_experts` değerini 8–16 düşürün ya da `cache_size` değerini
+  azaltın. Bu yığında bağlamı 262144'ün altına indirmeyin.
 - **Prefill ortasında küçük bir ayırma hatasıyla ölüyor** — bu PLE workspace'idir;
-  `autosplit_reserve` değerini yükseltin (örn. 512) ya da daha küçük bir `chunk_size`
-  kabul edin.
+  `chunk_size` değerini düşürün (örn. 2048 → 1536).
 - **İlk açılış dakikalar sürüyor / çekirdekler yeniden derleniyor** — exllamav3 ilk içe
   aktarmada CUDA çekirdeklerini JIT ile derler (kurulum betiği bunu önceden ısıtır).
   Derleme yarıda kalırsa `~/.cache/torch_extensions` dizinini silip yeniden başlatın.

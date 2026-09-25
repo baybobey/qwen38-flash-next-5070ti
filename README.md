@@ -44,7 +44,7 @@ Into this directory (plus the model, default `$HOME/models/Qwen3.8-Flash-Next`):
 
 - `.venv/` — torch `2.9.0+cu128`, exllamav3 `1.5.1` (prebuilt wheel matching your
   Python; falls back to the JIT wheel + a CUDA toolkit), TabbyAPI dependencies, and the `hf` CLI
-- `tabbyAPI/` — clone pinned to commit `7208273`
+- `tabbyAPI/` — clone pinned to commit `f07131c`
 - `tabbyAPI/config.yml` — from `configs/config-<N>gpu.yml`, with a `models/<name>` symlink and
   the forced sampler preset installed
 - `tabbyAPI/api_tokens.yml` — a random `api_key` and `admin_key`, `chmod 600`, never printed
@@ -134,9 +134,10 @@ use `cpu_moe_threads` ≈ physical cores / 2 and do not run a second model along
 - `cpu_moe_threads` — 16 (2-GPU) / 14 (1-GPU) on a 16-core host. Oversubscribing hurts.
 - `chunk_size` — 2048 (2-GPU) / 3072 (1-GPU) here; larger speeds up prefill until the
   PLE workspace allocation OOMs mid-prefill.
-- `autosplit_reserve` — headroom (MB per card) that autosplit leaves free. On 2 GPUs 1024 MB
-  per card keeps the 40 MiB PLE workspace safe during long prefills. On 1 GPU keep it small
-  (96 MB): the fit is tight, and the measured single-GPU numbers were taken with that default.
+- `autosplit_reserve` — headroom (MB per card) that autosplit leaves free. Keep it **small
+  (96 MB) on both layouts**: exllamav3 1.5.x reserves each MoE layer's worst-case prefill
+  transient (~700-750 MiB per card on 2 GPUs) inside the device budget, and the old 1024 MB
+  value makes the 2-GPU load fail with "Insufficient VRAM in split for model and cache".
 - `draft_mode: mtp` (2-GPU only) with `dynamic_draft: true` and an 8-token ceiling — the
   model's built-in MTP head; a real gain on 2 GPUs, nothing measurable on 1.
 - `cache_mode: 6,6` — 6-bit K/V at 262144 context. Do not lower the context.
@@ -149,10 +150,12 @@ use `cpu_moe_threads` ≈ physical cores / 2 and do not run a second model along
 
 ## Troubleshooting
 
-- **"Insufficient VRAM" at load** — lower `cpu_moe_split_experts` by 8–16, or reduce
-  `cache_size`. Do not reduce context below 262144 for this stack.
+- **"Insufficient VRAM" at load** — check `autosplit_reserve` first: it must be `[96, 96]`
+  (a larger reserve cannot work with exllamav3 1.5.x on 2 GPUs, see the tuning notes).
+  Then lower `cpu_moe_split_experts` by 8–16, or reduce `cache_size`. Do not reduce context
+  below 262144 for this stack.
 - **Prefill dies part-way with a small allocation error** — that is the PLE workspace;
-  raise `autosplit_reserve` (e.g. 512) or accept a smaller `chunk_size`.
+  reduce `chunk_size` (e.g. 2048 → 1536).
 - **First start takes minutes / kernels rebuild** — exllamav3 JIT-compiles CUDA kernels on
   first import (the installer pre-warms this). If a build is interrupted, delete
   `~/.cache/torch_extensions` and start again.

@@ -44,7 +44,7 @@ MODEL_REV="${MODEL_REV:-55a732e0c4c3d4614bc42b68493bb930d9b02c0a}"   # branch he
 MODEL_NAME="${MODEL_NAME:-Qwen3.8-Flash-Next-EXL3-405}"              # directory name under tabbyAPI/models
 MODEL_TOTAL_BYTES="${MODEL_TOTAL_BYTES:-107463600896}"               # 100.1 GiB (manifest total)
 TABBY_REPO="${TABBY_REPO:-https://github.com/theroyallab/tabbyAPI}"
-TABBY_COMMIT="${TABBY_COMMIT:-72082731339f8b8a04601bdf1b58605914d01fcb}"
+TABBY_COMMIT="${TABBY_COMMIT:-f07131cd8fe34e449fe87cdd3a066b52b96d3cac}"  # main head 2026-09-22; needs exllamav3 >= 1.5.1 (load-time check)
 # froggeric's fixed Qwen chat template. Fetched from the author's own repository at
 # install time — never bundled here — pinned by revision and verified by sha256.
 # Upstream: https://huggingface.co/froggeric/Qwen-Fixed-Chat-Templates (Apache-2.0)

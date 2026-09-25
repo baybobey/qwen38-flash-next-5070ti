@@ -31,6 +31,10 @@ model:
   tensor_parallel: false
   tensor_parallel_backend: native
   gpu_split_auto: true
+  # 96 MB — DO NOT raise to 1024. exllamav3 1.5.x measures each MoE layer's worst-case
+  # prefill transient and requires it inside the device budget, so a large reserve only
+  # eats load headroom (on 2 GPUs 1 GB per card fails the load outright, "Insufficient
+  # VRAM in split for model and cache"). Keep it small on both layouts — verified value.
   autosplit_reserve: [96.0, 96.0]
   gpu_split: []
   cpu_moe_offload_layers: 0
