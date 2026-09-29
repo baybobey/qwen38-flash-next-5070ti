@@ -25,26 +25,27 @@ generated on your machine at install time.
 | Driver | NVIDIA >= 570 (CUDA 12.8 runtime; the installer checks) |
 | System RAM | 128 GB recommended. The weights are ~100 GiB and stay resident (experts on CPU + the 36 GiB n-gram table in RAM). The installer refuses below 90 GiB |
 | Disk | ~120 GB free (model 100.1 GiB + venv ~8 GB) |
-| OS / Python | Linux x86_64, Python 3.10–3.13 (prebuilt engine wheel; 3.14 works via JIT, which needs the CUDA toolkit installed) |
+| OS / Python | Linux x86_64, Python 3.10–3.14 (matching prebuilt engine wheel; any other version falls back to JIT, which needs the CUDA toolkit installed) |
 | PCIe | Wider is faster: decode/prefill stream CPU experts over PCIe, so x8/x16 helps |
 | CPU | 16+ cores recommended (CPU experts run on the host; the configs assume ~16) |
 
-**Which GPUs work:** the prebuilt engine wheel carries compiled kernels for **sm_80, sm_86,
-sm_89, sm_90, sm_100 and sm_120** — Ampere, Ada, Hopper and Blackwell (the 30/40/50-series
-GeForce cards, A100/A6000, H100, B200). Turing (sm_75) and Volta (sm_70) get no kernel image
-from it; the installer detects that before downloading anything, switches to the JIT build
-(compiled on first import, so the CUDA toolkit is required) and says so. NVIDIA only — there
-is no AMD/Intel/CPU path. Mixed-generation pairs (e.g. a 4090 next to a 5070 Ti) are fine as
-long as both cards are sm_80 or newer. `./install-2gpu.sh --dry-run` prints the plan,
-including which engine wheel it picked, without changing anything.
+**Which GPUs work:** the prebuilt engine wheel carries compiled kernels for **sm_75, sm_80,
+sm_86, sm_89, sm_90, sm_100 and sm_120** — Ampere, Ada, Hopper and Blackwell (the 30/40/50-series
+GeForce cards, A100/A6000, H100, B200), plus Turing (20-series) via new sm_75 images. Turing
+support is still experimental upstream, so the installer keeps using the JIT build on sm_75
+(compiled on first import, so the CUDA toolkit is required) and says so; Volta (sm_70) and
+older are unsupported. NVIDIA only — there is no AMD/Intel/CPU path. Mixed-generation pairs
+(e.g. a 4090 next to a 5070 Ti) are fine as long as both cards are sm_80 or newer.
+`./install-2gpu.sh --dry-run` prints the plan, including which engine wheel it picked,
+without changing anything.
 
 ## What the installer does
 
 Into this directory (plus the model, default `$HOME/models/Qwen3.8-Flash-Next`):
 
-- `.venv/` — torch `2.9.0+cu128`, exllamav3 `1.5.1` (prebuilt wheel matching your
+- `.venv/` — torch `2.9.0+cu128`, exllamav3 `1.5.3` (prebuilt wheel matching your
   Python; falls back to the JIT wheel + a CUDA toolkit), TabbyAPI dependencies, and the `hf` CLI
-- `tabbyAPI/` — clone pinned to commit `f07131c`
+- `tabbyAPI/` — clone pinned to commit `be74bf0`
 - `tabbyAPI/config.yml` — from `configs/config-<N>gpu.yml`, with a `models/<name>` symlink and
   the forced sampler preset installed
 - `tabbyAPI/api_tokens.yml` — a random `api_key` and `admin_key`, `chmod 600`, never printed

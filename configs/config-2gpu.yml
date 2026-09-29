@@ -31,10 +31,11 @@ model:
   tensor_parallel: false
   tensor_parallel_backend: native
   gpu_split_auto: true
-  # 96 MB per card — DO NOT raise to 1024: exllamav3 1.5.x measures each MoE layer's
-  # worst-case prefill transient (~700-750 MiB on this layout) and requires it inside the
-  # device budget, so a 1 GB reserve makes the 2-GPU load fail with "Insufficient VRAM in
-  # split for model and cache". 96 MB is the verified value (loads in ~33 s).
+  # 96 MB per card — DO NOT raise to 1024: exllamav3 1.5.x budgets each MoE layer's
+  # worst-case prefill transient (~700-750 MiB on this layout) inside the device
+  # budget, and a 1 GB reserve failed the 2-GPU load with "Insufficient VRAM in split
+  # for model and cache" on the engines this layout was tuned on. 1.5.2/1.5.3 reworked
+  # that accounting; 96 MB stays the verified value (loads in ~33 s).
   autosplit_reserve: [96.0, 96.0]
   gpu_split: []
   cpu_moe_offload_layers: 0

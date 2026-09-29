@@ -44,7 +44,7 @@ MODEL_REV="${MODEL_REV:-55a732e0c4c3d4614bc42b68493bb930d9b02c0a}"   # branch he
 MODEL_NAME="${MODEL_NAME:-Qwen3.8-Flash-Next-EXL3-405}"              # directory name under tabbyAPI/models
 MODEL_TOTAL_BYTES="${MODEL_TOTAL_BYTES:-107463600896}"               # 100.1 GiB (manifest total)
 TABBY_REPO="${TABBY_REPO:-https://github.com/theroyallab/tabbyAPI}"
-TABBY_COMMIT="${TABBY_COMMIT:-f07131cd8fe34e449fe87cdd3a066b52b96d3cac}"  # main head 2026-09-22; needs exllamav3 >= 1.5.1 (load-time check)
+TABBY_COMMIT="${TABBY_COMMIT:-be74bf0a00bcb3a518e6feb7606f150c189be637}"  # main head 2026-09-28; needs exllamav3 >= 1.5.1 (load-time check)
 # froggeric's fixed Qwen chat template. Fetched from the author's own repository at
 # install time — never bundled here — pinned by revision and verified by sha256.
 # Upstream: https://huggingface.co/froggeric/Qwen-Fixed-Chat-Templates (Apache-2.0)
@@ -53,7 +53,7 @@ TEMPLATE_REV="${TEMPLATE_REV:-855bffc49448e299789730ff92c9b8d834d6cc14}"
 TEMPLATE_FILE="${TEMPLATE_FILE:-chat_template.jinja}"
 TEMPLATE_SHA256="${TEMPLATE_SHA256:-e57684bae4156211a55473c5a63be976a405a37ab5be5ae0e5abf1df5349c4b2}"
 TEMPLATE_NAME="${TEMPLATE_NAME:-froggeric-qwen38-v225}"   # no dots: tabbyAPI resolves it with Path.with_suffix
-EXL3_VERSION="${EXL3_VERSION:-1.5.1}"
+EXL3_VERSION="${EXL3_VERSION:-1.5.3}"
 TORCH_VERSION="${TORCH_VERSION:-2.9.0}"
 TORCH_CUDA="${TORCH_CUDA:-cu128}"
 TORCH_INDEX="${TORCH_INDEX:-https://download.pytorch.org/whl/cu128}"
@@ -146,10 +146,11 @@ python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)
   || die "python >= 3.10 required (found $PY_VERSION)"
 note "python: $PY_VERSION ($PY_TAG)"
 
-# exllamav3 release wheels. The prebuilt ones carry kernels for sm_80/86/89/90/100/120
-# (checked with cuobjdump --list-elf); a GPU older than sm_80 has no kernel image in
-# them and must use the JIT wheel, which compiles the CUDA sources for the local arch
-# and therefore needs the CUDA toolkit (nvcc).
+# exllamav3 release wheels. The prebuilt ones carry kernels for
+# sm_75/80/86/89/90/100/120 (checked with cuobjdump --list-elf on the 1.5.3 wheels).
+# sm_75 (Turing) is new and marked experimental upstream, so GPUs below sm_80 are
+# still steered to the JIT wheel here; it compiles the CUDA sources for the local
+# arch and therefore needs the CUDA toolkit (nvcc).
 EXL3_BASE="https://github.com/turboderp-org/exllamav3/releases/download/v${EXL3_VERSION}"
 EXL3_PREBUILT="${EXL3_BASE}/exllamav3-${EXL3_VERSION}%2B${TORCH_CUDA}.torch${TORCH_VERSION}-${PY_TAG}-${PY_TAG}-linux_x86_64.whl"
 EXL3_JIT="${EXL3_BASE}/exllamav3-${EXL3_VERSION}-py3-none-any.whl"
@@ -167,8 +168,8 @@ if [ -n "$MIN_CAP" ]; then
   note "compute capability (lowest GPU): $(LC_ALL=C awk -v c="$MIN_CAP" 'BEGIN{printf "%.1f", c}')"
   if LC_ALL=C awk -v c="$MIN_CAP" 'BEGIN{exit !(c+0 < 8.0)}'; then
     PREFER_JIT=1
-    note "note: the prebuilt engine wheel only carries kernels for sm_80+; this GPU needs"
-    note "      the JIT build (compiled at first import, requires the CUDA toolkit)"
+    note "note: prebuilt kernels target sm_80+ (sm_75 images are new and experimental);"
+    note "      this GPU uses the JIT build (compiled at first import, needs the CUDA toolkit)"
   fi
 else
   note "compute capability: could not be queried, assuming the prebuilt wheel fits"
@@ -353,6 +354,7 @@ else
       note "      ${TEMPLATE_REV:0:10} — re-run with --latest-template to take what upstream serves now"
     fi
   fi
+  mv -f "$TEMPLATE_PATH.part" "$TEMPLATE_PATH"
   note "author: froggeric — https://huggingface.co/${TEMPLATE_REPO} (Apache-2.0)"
   note "downloaded at install time, not redistributed with this repo"
   cat > "$TABBY_DIR/templates/${TEMPLATE_NAME}.README.txt" <<EOF

@@ -26,27 +26,28 @@ API anahtarı kurulum sırasında sizin makinenizde üretilir.
 | Sürücü | NVIDIA >= 570 (CUDA 12.8 çalışma zamanı; kurulum betiği kontrol eder) |
 | Sistem RAM'i | 128 GB önerilir. Ağırlıklar ~100 GiB tutar ve bellekte kalır (uzmanlar CPU'da + 36 GiB n-gram tablosu RAM'de). Kurulum betiği 90 GiB altında devam etmez |
 | Disk | ~120 GB boş alan (model 100.1 GiB + venv ~8 GB) |
-| İşletim sistemi / Python | Linux x86_64, Python 3.10–3.13 (hazır derlenmiş motor wheel'i; 3.14 JIT ile çalışır, o durumda CUDA toolkit kurulu olmalı) |
+| İşletim sistemi / Python | Linux x86_64, Python 3.10–3.14 (sürümünüze uyan hazır derlenmiş motor wheel'i; başka bir sürümde JIT devreye girer, o durumda CUDA toolkit kurulu olmalı) |
 | PCIe | Geniş bant daha hızlı: decode/prefill CPU uzmanlarını PCIe üzerinden aktarır, x8/x16 fark eder |
 | CPU | 16+ çekirdek önerilir (CPU uzmanları ana makinede çalışır; yapılandırmalar ~16 çekirdek varsayar) |
 
-**Hangi GPU'lar çalışır:** hazır derlenmiş motor wheel'i **sm_80, sm_86, sm_89, sm_90, sm_100
-ve sm_120** için derlenmiş çekirdekler içerir — Ampere, Ada, Hopper ve Blackwell (30/40/50
-serisi GeForce kartlar, A100/A6000, H100, B200). Turing (sm_75) ve Volta (sm_70) bu wheel'den
-çekirdek alamaz; kurulum betiği bunu daha hiçbir şey indirmeden algılar, JIT derlemesine geçer
-(ilk içe aktarmada derlenir, yani CUDA toolkit gerekir) ve size söyler. Yalnızca NVIDIA —
-AMD/Intel/CPU yolu yok. Karışık nesil ikililer (örn. bir 4090 ile bir 5070 Ti) her iki kart da
-sm_80 veya üstü olduğu sürece sorunsuz çalışır. `./install-2gpu.sh --dry-run` hiçbir şeyi
-değiştirmeden planı — hangi motor wheel'ini seçtiği dahil — yazdırır.
+**Hangi GPU'lar çalışır:** hazır derlenmiş motor wheel'i **sm_75, sm_80, sm_86, sm_89, sm_90,
+sm_100 ve sm_120** için derlenmiş çekirdekler içerir — Ampere, Ada, Hopper ve Blackwell
+(30/40/50 serisi GeForce kartlar, A100/A6000, H100, B200), ayrıca yeni sm_75 görüntüleriyle
+Turing (20 serisi). Turing desteği upstream'de hâlâ deneysel, bu yüzden kurulum betiği sm_75'te
+JIT derlemesini kullanmaya devam eder (ilk içe aktarmada derlenir, CUDA toolkit gerekir) ve
+size söyler; Volta (sm_70) ve daha eskiler desteklenmez. Yalnızca NVIDIA — AMD/Intel/CPU yolu
+yok. Karışık nesil ikililer (örn. bir 4090 ile bir 5070 Ti) her iki kart da sm_80 veya üstü
+olduğu sürece sorunsuz çalışır. `./install-2gpu.sh --dry-run` hiçbir şeyi değiştirmeden planı
+— hangi motor wheel'ini seçtiği dahil — yazdırır.
 
 ## Kurulum betiği ne yapar
 
 Bu dizine (ve varsayılan olarak `$HOME/models/Qwen3.8-Flash-Next` altına model):
 
-- `.venv/` — torch `2.9.0+cu128`, exllamav3 `1.5.1` (Python sürümünüze uyan hazır
+- `.venv/` — torch `2.9.0+cu128`, exllamav3 `1.5.3` (Python sürümünüze uyan hazır
   derlenmiş wheel; uygun wheel yoksa JIT wheel + CUDA toolkit), TabbyAPI bağımlılıkları
   ve `hf` CLI
-- `tabbyAPI/` — `f07131c` commit'ine sabitlenmiş klon
+- `tabbyAPI/` — `be74bf0` commit'ine sabitlenmiş klon
 - `tabbyAPI/config.yml` — `configs/config-<N>gpu.yml` dosyasından yazılır; `models/<ad>`
   sembolik bağlantısı ve zorunlu (force) sampler preset'i kurulur
 - `tabbyAPI/api_tokens.yml` — rastgele üretilmiş `api_key` ve `admin_key`, `chmod 600`, hiçbir
