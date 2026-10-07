@@ -1,0 +1,25 @@
+# Installed by the installers — never commit any of this
+.venv/
+Strata/
+tabbyAPI/
+Strata-data/
+models/
+logs/
+results/
+
+# Secrets and generated local config
+api_tokens.yml
+strata-api-key.txt
+config.yml
+config.yaml
+.env
+Strata/api_key.txt
+Strata/strata-*.json
+Strata/strata-*.shared-settings.json
+configs/strata-iq3_s*.json
+strata-iq3_s.json
+
+# Housekeeping
+__pycache__/
+*.pyc
+*.log
