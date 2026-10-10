@@ -6,8 +6,9 @@ Self-contained installer and tuned serving configs for **Qwen3.8-Flash-Next GSQ-
 on **1x or 2x 16 GB GPUs** (tuned on 2x RTX 5070 Ti), via
 [Niko1221/Strata](https://github.com/Niko1221/Strata).
 
-It downloads everything it needs (engine source, model, MTP draft layer, chat template),
-builds the CUDA engine locally, and writes a working 262,144-token configuration with the
+It downloads everything it needs (engine source, model, MTP draft layer, vision encoder
+mmproj, chat template), builds the CUDA engine and the strata-vision encoder locally, and
+writes a working 262,144-token configuration — images included on every profile — with the
 tuning this box measured. Nothing secret lives in this repo: the API key is generated on
 your machine at install time.
 
@@ -29,7 +30,7 @@ and [`latest`](https://github.com/baybobey/qwen38-flash-next-5070ti/tree/latest)
 | Driver | NVIDIA >= 580 with CUDA 13 for RTX 50 / sm_120 builds (CUDA >= 12.4 covers sm_86+) |
 | Build tools | `cmake`, `ninja`, `nvcc` — Strata ships no prebuilt Linux engine; the installer compiles it (~2 min on 16 cores) |
 | System RAM | 128 GB recommended. The GGUF keeps ~47 GiB of experts + the 26.9 GiB n-gram (PLE) table resident; the installer refuses below ~62 GiB |
-| Disk | ~120 GB free (model 83.6 GB + prepared pack ~1.5 GB + MTP draft ~5 GB + engine build) |
+| Disk | ~122 GB free (model 83.6 GB + prepared pack ~1.5 GB + MTP draft ~5 GB + vision mmproj ~0.9 GB + engine build) |
 | OS / Python | Linux x86_64, Python 3.10+ (Strata's own setup creates the venv) |
 | PCIe | Wider is faster: decode streams uncached experts over PCIe, so x8/x16 helps |
 | CPU | 16+ cores recommended (CPU expert pools + the prompt stager) |
@@ -38,12 +39,14 @@ and [`latest`](https://github.com/baybobey/qwen38-flash-next-5070ti/tree/latest)
 
 Into this directory:
 
-- `Strata/` — the Strata clone pinned to commit `e8ca9af` (v0.1.40.2), then its own
-  `./setup.sh --yes --family qwen --model IQ3_S --context 262144 --kv int8 --vision no
+- `Strata/` — the Strata clone pinned to commit `61b3fb5d` (v0.1.42), then its own
+  `./setup.sh --yes --family qwen --model IQ3_S --context 262144 --kv int8 --vision gpu
   --no-start --build`: venv, CUDA engine (compiled for your GPU), model download,
-  the prepared pack (`Strata-data/packs/iq3_s`) and the MTP draft layer (`Strata-data/mtp`,
+  the prepared pack (`Strata-data/packs/iq3_s`), the MTP draft layer (`Strata-data/mtp`,
   fetched from Qwen's BF16 checkpoint by Strata's own `tools/mtp_fetch.py` — ~5 GB of
-  range reads; the 360 GB checkpoint is never downloaded)
+  range reads; the 360 GB checkpoint is never downloaded) and the vision path: the
+  `strata-vision` CUDA encoder (built) + the mmproj encoder (`Strata-data/models/`,
+  ~0.9 GB, downloaded) — images are served by every profile, 262k/500k/1m, 1 and 2 GPUs
 - `Strata/api_key.txt` — a random key, `chmod 600`, never printed, never in git
 - `Strata/strata-iq3_s.json` — the run config, written from `configs/config-<N>gpu.json`
   with this machine's paths resolved and the key injected (git-ignored)
@@ -87,14 +90,18 @@ cat Strata/api_key.txt
 Any OpenAI-compatible client: `base_url = http://127.0.0.1:8001/v1`,
 `api_key = <that value>`, `model = qwen3.8-flash-next-iq3_s`. There is also an
 Anthropic-compatible `/v1/messages` endpoint and a built-in web chat UI at
-`http://127.0.0.1:8001/`. `./verify-strata.sh` checks health, context length, and runs
+`http://127.0.0.1:8001/`. Images work everywhere: send an OpenAI `image_url` part
+(data:, http(s) or a local path the server can read), an Anthropic image block, or
+`/image <path>` in the web chat; the web UI also takes pasted/dropped pictures. Each
+picture becomes at most 1,024 context tokens and the same picture is encoded only
+once (hash cache). `./verify-strata.sh` checks health, context length, images, runs
 the 4-part functional suite (`scripts/smoke-strata.py`: health, OpenAI tool calls,
-multi-turn, Anthropic).
+multi-turn, Anthropic) and an end-to-end image round-trip (`scripts/test-vision.py`).
 
 ## Measured performance
 
 Author's box: 2x RTX 5070 Ti (16 GB each, x8 + x4 PCIe), Ryzen 9 9950X3D2, 123 GiB RAM,
-engine 0.1.40.2 built locally for sm_120. Sampler as configured server-side:
+engine 0.1.42 built locally for sm_120. Sampler as configured server-side:
 **temp 1.0 / top-k 20 / top-p 0.95 / repetition 1.0**, xhigh reasoning. Numbers are medians
 of 2–4 runs with a 58.7k-token prompt unless noted — expect yours to differ with PCIe
 width, RAM speed and CPU core count (`--calibrate` re-measures the engine's own knobs).
@@ -142,6 +149,11 @@ exllamav3 branch keeps the higher-precision one.
 - calibrated per GPU layout: `--pcie-frac 0.20 / --spec-min-p 0.70` (2-GPU), `0.35 / 0.70`
   (1-GPU) on the author's box — re-measure yours with `--calibrate` or
   `cd Strata && ./setup.sh --calibrate --no-start`.
+- vision on every profile: the `"vision"` block (strata-vision exe, mmproj, shard 1,
+  `gpu: true`, `max_tokens: 1024`) + `--vision` in the engine args; the encoder loads
+  before the engine (~0.6 s + a 1024-token warmup) so cache sizing accounts for it, and
+  the profiles carry `--vram-reserve-mib 700` (upstream's value for the GPU encoder)
+  instead of the text-only 1400/1000.
 
 ## Context variants and the borrow cap
 
@@ -161,15 +173,25 @@ the caches — after any change, grep the engine log (`Strata/strata-iq3_s.log`)
 
 `cd Strata && git fetch --tags && git checkout <new tag> && ./update.sh` — then re-run
 `./setup.sh --calibrate --no-start` (the measured optima move with the engine kernels)
-and re-check the `prompt chunk` line at your context. The configs here track what was
-last verified on the author's box; the current pin is engine v0.1.40.2 (`e8ca9af`).
+and re-check the `prompt chunk` line at your context. When `tools/vision` changed, the
+encoder rebuilds with `--vision gpu` already set (`cd Strata && cmake --build build-vision -j$(nproc)`
+does it directly). The configs here track what was last verified on the author's box;
+the current pin is engine v0.1.42 (`61b3fb5d`).
+Note for the 0.1.40.2 → 0.1.42 jump: it turns `STRATA_ROUTE_TAIL_SKIP=7` on by default
+for CUDA serving (+13–16% decode per upstream; the table numbers above predate it). If
+an output-quality change ever shows up, opt out with `"env": {"STRATA_ROUTE_TAIL_SKIP": "0"}`.
 
 ## Troubleshooting
 
 - **reads much slower than the table** — check for a `prompt chunk X -> Y` downgrade in
   `Strata/strata-iq3_s.log` (the borrow cap), and re-run `--calibrate` for your layout.
-- **"VRAM free … LOW" warning at start** — raise `--vram-reserve-mib` (1400 (2-GPU) /
-  1000 (1-GPU) is what this tuning uses).
+- **image request answered 400 "started without the vision encoder"** — the run config
+  lost its `"vision"` block or the `--vision` arg (the serve scripts copy the
+  `configs/` templates over `Strata/strata-iq3_s.json`, so pull + re-serve); `/health`
+  shows `"images": true|false` for a quick look.
+- **"VRAM free … LOW" warning at start** — the engine prints the number it wants;
+  raise `--vram-reserve-mib` to it (700 with the vision encoder on, which is what this
+  tuning uses; text-only profiles used 1400 (2-GPU) / 1000 (1-GPU)).
 - **engine died / 503 "the engine is starting"** — the server restarts it; a kernel or
   driver reset on the box can take the desktop session down while the engine keeps
   serving (the author's AMD-iGPU box does this; run heavy jobs from a TTY/SSH).

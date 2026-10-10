@@ -1,5 +1,5 @@
 {
-  "_comment": "Reference template. The installer resolves the @TOKENS@ to real paths and injects the locally generated API key. Do not put real secrets in this file. Experimental: extends the trained 262144 window with yarn rope scaling (factor = window / 262144).",
+  "_comment": "Reference template. The installer resolves the @TOKENS@ to real paths and injects the locally generated API key. Do not put real secrets in this file. Experimental: extends the trained 262144 window with yarn rope scaling (factor = window / 262144). Images (the strata-vision encoder + mmproj, --vision) are on for every profile; --vram-reserve-mib 700 is what the GPU encoder leaves free (upstream's value).",
   "exe": "@STRATA_DIR@/engine/strata",
   "args": [
     "--pack",
@@ -27,7 +27,7 @@
     "--ple-io",
     "ram",
     "--vram-reserve-mib",
-    "1400",
+    "700",
     "--conversation-cache-mib",
     "12288",
     "--conversation-cache-slots",
@@ -45,14 +45,18 @@
     "--rope-scale",
     "2",
     "--mtp-window",
-    "8192"
+    "8192",
+    "--vision"
   ],
   "cwd": "@STRATA_DIR@",
   "tokenizer": "@DATA_DIR@/packs/iq3_s/tokenizer",
   "model_name": "qwen3.8-flash-next-iq3_s",
   "log": "@STRATA_DIR@/strata-iq3_s.log",
   "port": 8001,
-  "gpu": [0, 1],
+  "gpu": [
+    0,
+    1
+  ],
   "gpus_asked": true,
   "layer_split": "auto",
   "host": "0.0.0.0",
@@ -68,5 +72,12 @@
   },
   "env": {
     "STRATA_IQ_MT_MIN": "1"
+  },
+  "vision": {
+    "exe": "@STRATA_DIR@/engine/strata-vision",
+    "mmproj": "@MODELS_DIR@/mmproj-Qwen3.8-Flash-Next-BF16.gguf",
+    "model": "@GGUF_DIR@/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf",
+    "gpu": true,
+    "max_tokens": 1024
   }
 }

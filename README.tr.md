@@ -7,8 +7,9 @@
 yapılandırmaları — 2x RTX 5070 Ti üzerinde ayarlandı. Motor olarak
 [Niko1221/Strata](https://github.com/Niko1221/Strata) kullanır.
 
-İhtiyaç duyduğu her şeyi (motor kaynağı, model, MTP taslak katmanı, sohbet şablonu)
-indirir, CUDA motorunu yerelde derler ve bu kutuda ölçülen ayarlarla çalışan 262.144
+İhtiyaç duyduğu her şeyi (motor kaynağı, model, MTP taslak katmanı, vision kodlayıcı
+mmproj'u, sohbet şablonu) indirir; CUDA motorunu ve strata-vision kodlayıcısını yerelde
+derler ve bu kutuda ölçülen ayarlarla, her profilde görüntü destekli çalışan 262.144
 token bağlamlı (context) bir yapılandırma yazar. Bu depoda hiçbir gizli bilgi yoktur:
 API anahtarı kurulum sırasında sizin makinenizde üretilir.
 
@@ -31,7 +32,7 @@ dallarındadır.
 | Sürücü | RTX 50 / sm_120 derlemesi için NVIDIA >= 580 ve CUDA 13 (sm_86+ için CUDA >= 12.4 yeterlidir) |
 | Derleme araçları | `cmake`, `ninja`, `nvcc` — Strata'nın hazır Linux motoru yoktur; kurulum betiği derler (~16 çekirdekte ~2 dk) |
 | Sistem RAM'i | 128 GB önerilir. GGUF ~47 GiB uzman (expert) + 26.9 GiB n-gram (PLE) tablosunu bellekte tutar; kurulum betiği ~62 GiB altında devam etmez |
-| Disk | ~120 GB boş alan (model 83.6 GB + hazırlanmış paket ~1.5 GB + MTP taslağı ~5 GB + motor derlemesi) |
+| Disk | ~122 GB boş alan (model 83.6 GB + hazırlanmış paket ~1.5 GB + MTP taslağı ~5 GB + vision mmproj ~0.9 GB + motor derlemesi) |
 | OS / Python | Linux x86_64, Python 3.10+ (venv'i Strata'nın kendi kurulumu oluşturur) |
 | PCIe | Geniş bant daha hızlı: decode önbelleğe alınmamış uzmanları PCIe üzerinden akıtır, x8/x16 fark eder |
 | CPU | 16+ çekirdek önerilir (CPU uzman havuzları + prompt aşamalandırıcı) |
@@ -40,13 +41,15 @@ dallarındadır.
 
 Bu dizine:
 
-- `Strata/` — `e8ca9af` commit'ine (v0.1.40.2) sabitlenmiş Strata klonu; ardından
+- `Strata/` — `61b3fb5d` commit'ine (v0.1.42) sabitlenmiş Strata klonu; ardından
   kendi `./setup.sh --yes --family qwen --model IQ3_S --context 262144 --kv int8
-  --vision no --no-start --build` akışı: venv, CUDA motoru (sizin GPU'nuz için
-  derlenir), model indirme, hazırlanmış paket (`Strata-data/packs/iq3_s`) ve MTP
+  --vision gpu --no-start --build` akışı: venv, CUDA motoru (sizin GPU'nuz için
+  derlenir), model indirme, hazırlanmış paket (`Strata-data/packs/iq3_s`), MTP
   taslak katmanı (`Strata-data/mtp`; Strata'nın kendi `tools/mtp_fetch.py` aracıyla
   Qwen'in BF16 ağırlık dosyasından ~5 GB'lık aralık okumalarıyla getirilir — 360 GB'lık
-  checkpoint asla indirilmez)
+  checkpoint asla indirilmez) ve görüntü yolu: `strata-vision` CUDA kodlayıcısı
+  (derlenir) + mmproj kodlayıcısı (`Strata-data/models/`, ~0,9 GB, indirilir) —
+  tüm profillerde (262k/500k/1m, 1 ve 2 GPU) görüntü sunulur
 - `Strata/api_key.txt` — rastgele üretilmiş anahtar, `chmod 600`, hiçbir zaman ekrana
   basılmaz ve git'e girmez
 - `Strata/strata-iq3_s.json` — çalıştırma yapılandırması; `configs/config-<N>gpu.json`
@@ -96,12 +99,17 @@ OpenAI uyumlu her istemci: `base_url = http://127.0.0.1:8001/v1`,
 `/v1/messages` uç noktası ve `http://127.0.0.1:8001/` adresinde yerleşik bir web
 sohbet arayüzü vardır. `./verify-strata.sh`; sağlık durumunu, bağlam uzunluğunu kontrol
 eder ve 4'lü işlevsel testi (`scripts/smoke-strata.py`: sağlık, OpenAI tool call, çok
-turlu sohbet, Anthropic) çalıştırır.
+turlu sohbet, Anthropic) çalıştırır; ayrıca uçtan uca bir görüntü testi yapar
+(`scripts/test-vision.py`). Görüntü her yerde çalışır: OpenAI `image_url` parçası
+(data:, http(s) ya da sunucunun okuyabildiği yerel bir yol), Anthropic görüntü bloğu
+veya web sohbette `/image <yol>`; web arayüzü yapıştırılan/sürüklenen görüntüleri de
+alır. Her resim en fazla 1.024 bağlam token'ına dönüşür ve aynı resim yalnızca bir
+kez kodlanır (hash önbelleği).
 
 ## Ölçülen performans
 
 Yazarın makinesi: 2x RTX 5070 Ti (her biri 16 GB, x8 + x4 PCIe), Ryzen 9 9950X3D2,
-123 GiB RAM, sm_120 için yerelde derlenmiş motor 0.1.40.2. Sunucu tarafında ayarlanmış
+123 GiB RAM, sm_120 için yerelde derlenmiş motor 0.1.42. Sunucu tarafında ayarlanmış
 örnekleici (sampler): **temp 1.0 / top-k 20 / top-p 0.95 / repetition 1.0**, xhigh
 akıl yürütme. Aşağıdaki sayılar — aksi belirtilmedikçe — 58.7k tokenlık prompt
 ile 2–4 çalıştırmanın medyanlarıdır; kendi kutunuzda PCIe genişliği, RAM hızı ve çekirdek
@@ -153,6 +161,11 @@ yapar. IQ3_S ~3.5-bit'lik bir kuantlamadır, EXL3 4.05 bpw daha yüksek; Strata 
 - GPU yerleşimine göre kalibrasyon: yazarın kutusunda `--pcie-frac 0.20 /
   --spec-min-p 0.70` (2-GPU), `0.35 / 0.70` (1-GPU) — kendi değerinizi `--calibrate` ya
   da `cd Strata && ./setup.sh --calibrate --no-start` ile yeniden ölçün.
+- her profilde vision: `"vision"` bloğu (strata-vision exe, mmproj, shard 1,
+  `gpu: true`, `max_tokens: 1024`) + motor argümanlarında `--vision`; kodlayıcı
+  motordan önce yüklenir (~0,6 sn + 1024 token'lık ısınma), bu yüzden önbellek
+  boyutlandırması onu hesaba katar; profiller 1400/1000 yerine `--vram-reserve-mib 700`
+  (GPU kodlayıcısı için upstream'in değeri) taşır.
 
 ## Bağlam varyantları ve ödünç tavanı
 
@@ -174,16 +187,27 @@ logunda (`Strata/strata-iq3_s.log`) `prompt chunk` satırını arayın.
 `cd Strata && git fetch --tags && git checkout <yeni tag> && ./update.sh` — ardından
 `./setup.sh --calibrate --no-start` yeniden çalıştırın (ölçülen optimumlar motor
 kernel'leriyle birlikte kayar) ve kendi bağlamınızda `prompt chunk` satırını tekrar
-kontrol edin. Buradaki yapılandırmalar yazarın kutusunda en son doğrulananı izler; şu
-anki sabitleme motor v0.1.40.2 (`e8ca9af`).
+kontrol edin. `tools/vision` değiştiyse kodlayıcı da yeniden derlenir (`--vision gpu`
+zaten ayarlıysa kurulum kendisi yapar; doğrudan: `cd Strata && cmake --build
+build-vision -j$(nproc)`). Buradaki yapılandırmalar yazarın kutusunda en son
+doğrulananı izler; şu anki sabitleme motor v0.1.42 (`61b3fb5d`).
+0.1.40.2 → 0.1.42 sıçraması için not: CUDA sunumunda `STRATA_ROUTE_TAIL_SKIP=7`
+varsayılan olarak açılır (upstream'e göre +%13–16 decode; yukarıdaki tablo sayıları
+öncesinedir). Bir çıktı kalitesi değişikliği görülürse `"env":
+{"STRATA_ROUTE_TAIL_SKIP": "0"}` ile kapatın.
 
 ## Sorun giderme
 
 - **Tablodan çok daha yavaş okuma** — `Strata/strata-iq3_s.log` içinde `prompt chunk X
   -> Y` küçültmesi var mı bakın (ödünç tavanı) ve `--calibrate`ı kendi yerleşiminizle
   yeniden çalıştırın.
-- **Başlangıçta "VRAM free … LOW" uyarısı** — `--vram-reserve-mib` yükseltin (bu
-  ayarlama 1400 (2-GPU) / 1000 (1-GPU) kullanır).
+- **Görüntü isteği 400 "started without the vision encoder" döndürüyor** — çalıştırma
+  yapılandırması `"vision"` bloğunu ya da `--vision` argümanını kaybetmiş (serve
+  betikleri `configs/` şablonlarını `Strata/strata-iq3_s.json` üzerine kopyalar; pull
+  edip yeniden sunun); hızlı kontrol için `/health` `"images": true|false` gösterir.
+- **Başlangıçta "VRAM free … LOW" uyarısı** — motorun istediği sayıyı verin;
+  `--vram-reserve-mib` yükseltin (vision kodlayıcı açıkken 700 — bu ayarlama bunu
+  kullanır; metin-only profiller 1400 (2-GPU) / 1000 (1-GPU) kullanırdı).
 - **Motor öldü / 503 "the engine is starting"** — sunucu onu yeniden başlatır;
   kutudaki bir kernel/sürücü reset'i masaüstü oturumunu düşürürken motor sunmaya devam
   edebilir (yazarın AMD iGPU'lu kutusunda olur; ağır işleri TTY/SSH'ten başlatın).

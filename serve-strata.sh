@@ -62,7 +62,7 @@ FINAL_ARGS=()
 "$STRATA_DIR/.venv/bin/python" "$REPO_DIR/scripts/finalize-strata.py" "$CFG_SRC" \
   --out "$STRATA_DIR/strata-iq3_s.json" \
   --strata-dir "$STRATA_DIR" --data-dir "$DATA_DIR" --gguf-dir "$GGUF_DIR" \
-  --key-file "$KEY_FILE" --port "$PORT" "${FINAL_ARGS[@]}"
+  --models-dir "$MODELS_ROOT" --key-file "$KEY_FILE" --port "$PORT" "${FINAL_ARGS[@]}"
 echo "[serve-strata] applied $(basename "$CFG_SRC") -> Strata/strata-iq3_s.json"
 
 # 2) stop a running instance on this port (the engine child exits with it)

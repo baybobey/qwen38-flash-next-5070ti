@@ -37,6 +37,13 @@ PY
 echo "== GET /health =="
 curl -sS --max-time 15 "$BASE/health" || { echo; echo "server not reachable on $BASE"; exit 1; }
 echo
+"$PY" - "$BASE/health" <<'PY' || exit 1
+import json, sys, urllib.request
+h = json.load(urllib.request.urlopen(sys.argv[1], timeout=15))
+if not h.get("images"):
+    sys.exit("health says images: false — the run config has no vision block (re-run the installer / serve script)")
+print("   images: on (vision encoder resident)")
+PY
 
 echo "== GET /v1/models (context length must be $CTX_EXPECT) =="
 curl -sS --max-time 15 "$BASE/v1/models" -H "Authorization: Bearer ***" \
@@ -68,9 +75,14 @@ echo
 echo "== functional suite (health, tool calls, multi-turn, Anthropic) =="
 "$PY" "$REPO_DIR/scripts/smoke-strata.py" --port "$PORT"
 
+echo
+echo "== image round-trip (generated test picture, encoded once + cached repeat) =="
+"$PY" "$REPO_DIR/scripts/test-vision.py" --port "$PORT"
+
 cat <<EOF
 
-Expected: healthy, n_ctx $CTX_EXPECT, a short answer with reasoning kept out of
-content, and smoke 4/4. Streaming answers with 'strata serve: prompt ...'
-lines in Strata/strata-iq3_s.log show the engine's own prompt/decode tok/s.
+Expected: healthy with images on, n_ctx $CTX_EXPECT, a short answer with reasoning
+kept out of content, smoke 4/4, and the vision test reading the red circle correctly
+(first send encodes, second is hash-cached). Streaming answers with 'strata serve:
+prompt ...' lines in Strata/strata-iq3_s.log show the engine's own prompt/decode tok/s.
 EOF

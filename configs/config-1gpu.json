@@ -1,5 +1,5 @@
 {
-  "_comment": "Reference template. The installer resolves the @TOKENS@ to real paths and injects the locally generated API key. Do not put real secrets in this file. Single card: no --pipeline-windows (two-card split only). --pcie-frac 0.35 is this layout's calibration point; re-measure with ./setup.sh --calibrate --no-start per GPU layout.",
+  "_comment": "Reference template. The installer resolves the @TOKENS@ to real paths and injects the locally generated API key. Do not put real secrets in this file. Single card: no --pipeline-windows (two-card split only). --pcie-frac 0.35 is this layout's calibration point; re-measure with ./setup.sh --calibrate --no-start per GPU layout. Images (the strata-vision encoder + mmproj, --vision) are on for every profile; --vram-reserve-mib 700 is what the GPU encoder leaves free (upstream's value).",
   "exe": "@STRATA_DIR@/engine/strata",
   "args": [
     "--pack",
@@ -27,7 +27,7 @@
     "--ple-io",
     "ram",
     "--vram-reserve-mib",
-    "1000",
+    "700",
     "--conversation-cache-mib",
     "8192",
     "--conversation-cache-slots",
@@ -37,7 +37,8 @@
     "--pcie-frac",
     "0.35",
     "--spec-min-p",
-    "0.70"
+    "0.70",
+    "--vision"
   ],
   "cwd": "@STRATA_DIR@",
   "tokenizer": "@DATA_DIR@/packs/iq3_s/tokenizer",
@@ -60,5 +61,12 @@
   },
   "env": {
     "STRATA_IQ_MT_MIN": "1"
+  },
+  "vision": {
+    "exe": "@STRATA_DIR@/engine/strata-vision",
+    "mmproj": "@MODELS_DIR@/mmproj-Qwen3.8-Flash-Next-BF16.gguf",
+    "model": "@GGUF_DIR@/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf",
+    "gpu": true,
+    "max_tokens": 1024
   }
 }

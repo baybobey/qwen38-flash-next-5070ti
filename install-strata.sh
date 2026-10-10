@@ -22,6 +22,8 @@
 #     conversation parking on every profile    calibrated --pcie-frac / --spec-min-p
 #     server-side sampler defaults (temp 1.0 / top-k 20 / top-p 0.95) + froggeric's fixed chat
 #     template with reasoning effort pinned to xhigh
+#     images on every profile: the Strata vision encoder (--vision gpu, strata-vision
+#     built for CUDA + mmproj downloaded) with --vram-reserve-mib 700 for it
 #
 # Options:
 #     --gpus N          1 or 2 (set by the wrapper)
@@ -50,10 +52,10 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ---- pinned versions (override via env if you know what you are doing) ------
 STRATA_REPO="${STRATA_REPO:-https://github.com/Niko1221/Strata}"
-STRATA_COMMIT="${STRATA_COMMIT:-e8ca9afd03d839d4f8dbbe82dffce7f8a3bafd7a}"   # tag v0.1.40.2
+STRATA_COMMIT="${STRATA_COMMIT:-61b3fb5dd3f1e8ec09cf7e4e05208bc6d3c46406}"   # tag v0.1.42
 # The GGUF: the ISTA-DASLab GSQ-RCO quant of Qwen3.8-Flash-Next. Informational here:
 # Strata's own setup carries the pin for the download (same revision as of
-# v0.1.40.2); kept to document what this stack was built and measured against.
+# v0.1.42); kept to document what this stack was built and measured against.
 MODEL_REPO="${MODEL_REPO:-ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF}"
 MODEL_REV="${MODEL_REV:-ed59f92082b1e93c0e96d60a8b11aab089b52f09}"
 MODEL_VARIANT="IQ3_S"
@@ -79,7 +81,7 @@ DRY_RUN=0
 CONTEXT=262144
 PORT=8001
 
-usage() { sed -n '3,41p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '3,43p' "$0" | sed 's/^# \{0,1\}//'; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -111,6 +113,7 @@ case "$CONTEXT" in
   1048576) CFG_SRC="$REPO_DIR/configs/config-${GPUS}gpu-1m.json" ;;
 esac
 GGUF_DIR="${GGUF_DIR:-$MODELS_ROOT/IQ3_S}"   # setup's own layout for a downloaded variant
+MODELS_DIR="$MODELS_ROOT"                    # where setup drops the mmproj vision encoder
 
 say()  { printf '\n== %s\n' "$*"; }
 note() { printf '   %s\n' "$*"; }
@@ -161,7 +164,7 @@ note "system RAM: ${MEM_TOTAL_GIB} GiB"
 mkdir -p "$MODELS_ROOT"
 AVAIL_GB=$(( $(df -B1 --output=avail "$MODELS_ROOT" | tail -1) / 1000 / 1000 / 1000 ))
 if [ "$SKIP_MODEL" -eq 0 ]; then
-  note "free disk at $MODELS_ROOT: ${AVAIL_GB} GB (need ~115 GB: model 83.6 GB + pack ~1.5 GB + MTP ~5 GB + engine build)"
+  note "free disk at $MODELS_ROOT: ${AVAIL_GB} GB (need ~122 GB: model 83.6 GB + pack ~1.5 GB + MTP ~5 GB + vision mmproj ~0.9 GB + engine build)"
   [ "$AVAIL_GB" -ge 115 ] || die "not enough free disk space for the model download"
 else
   note "free disk at $MODELS_ROOT: ${AVAIL_GB} GB (model skipped)"
@@ -174,10 +177,12 @@ note "python: $PY_TAG (Strata's setup.sh creates its own venv inside the clone)"
 
 if [ "$DRY_RUN" -eq 1 ]; then
   say "Dry run — nothing will be changed"
-  note "Strata clone:   $STRATA_DIR @ ${STRATA_COMMIT:0:10} (tag v0.1.40.2), CUDA engine built locally (--build)"
+  note "Strata clone:   $STRATA_DIR @ ${STRATA_COMMIT:0:10} (tag v0.1.42), CUDA engine built locally (--build)"
   note "model:          $MODEL_REPO @ ${MODEL_REV:0:10}, variant $MODEL_VARIANT"
   note "GGUF dir:       $GGUF_DIR"
   note "data dir:       $DATA_DIR (packs/, mtp/)"
+  note "vision:         setup --vision gpu: the strata-vision CUDA encoder is built and the"
+  note "                mmproj encoder (~0.9 GB) downloaded; every profile serves images"
   note "calibration:    $([ "$CALIBRATE" -eq 1 ] && echo "./setup.sh --calibrate (per-PC, ~10 min)" || echo "skipped (--calibrate adds it; the configs keep the author's measured values)")"
   note "run config:     $(basename "$CFG_SRC") -> Strata/strata-iq3_s.json (paths resolved for this machine)"
   note "chat template:  froggeric's fixed template, revision ${TEMPLATE_REV:0:10}, sha256-verified,"
@@ -201,7 +206,7 @@ note "HEAD: $(git -C "$STRATA_DIR" log -1 --format='%h %s')"
 # setup.sh is idempotent: completed steps (venv, engine build,
 # download, pack, MTP) are recognized and skipped on a re-run.
 say "Strata setup (engine build + model + pack + MTP draft; takes a while)"
-SETUP_ARGS=(--yes --family qwen --model "$MODEL_VARIANT" --context "$CONTEXT" --kv int8 --vision no --no-start --build
+SETUP_ARGS=(--yes --family qwen --model "$MODEL_VARIANT" --context "$CONTEXT" --kv int8 --vision gpu --no-start --build
             --data-dir "$DATA_DIR" --models-dir "$MODELS_ROOT")
 if [ "$GPUS" = "2" ]; then
   SETUP_ARGS+=(--gpus "0,1")
@@ -304,7 +309,7 @@ say "Run config"
 python3 "$REPO_DIR/scripts/finalize-strata.py" "$CFG_SRC" \
   --out "$STRATA_DIR/strata-iq3_s.json" \
   --strata-dir "$STRATA_DIR" --data-dir "$DATA_DIR" --gguf-dir "$GGUF_DIR" \
-  --key-file "$KEY_FILE" --port "$PORT"
+  --models-dir "$MODELS_DIR" --key-file "$KEY_FILE" --port "$PORT"
 # the server-side default for clients that send no reasoning_effort (the template
 # default already pins xhigh; this matches the shared Chat-settings file too)
 SHARED="$STRATA_DIR/strata-iq3_s.shared-settings.json"

@@ -26,7 +26,9 @@ def listener_pid(port: int) -> int | None:
 
 
 def engine_pids() -> list[int]:
-    # [e] keeps the pattern from matching the pgrep wrapper itself
+    # [e] keeps the pattern from matching the pgrep wrapper itself. The vision
+    # encoder child (engine/strata-vision) is excluded on purpose — it is not a
+    # `strata --serve` process and dies with its own parent.
     out = subprocess.run(["pgrep", "-f", "engin[e]/strata --serve"], capture_output=True, text=True).stdout
     return [int(x) for x in out.split()]
 

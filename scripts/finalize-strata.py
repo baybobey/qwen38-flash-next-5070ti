@@ -2,14 +2,18 @@
 """Finalize a Strata run config: resolve path tokens, inject the local API key.
 
 Reads a repo template (configs/strata-iq3_s-*.json, which carries @STRATA_DIR@,
-@DATA_DIR@, @GGUF_DIR@ placeholders and a placeholder api_key), turns it into a
-runnable config for this install and writes it to --out.
+@DATA_DIR@, @GGUF_DIR@, @MODELS_DIR@ placeholders and a placeholder api_key),
+turns it into a runnable config for this install and writes it to --out.
 
   finalize-strata.py <template.json> --out Strata/strata-iq3_s.json \
-      [--strata-dir D] [--data-dir D] [--gguf-dir D] [--key-file F] [--port N]
+      [--strata-dir D] [--data-dir D] [--gguf-dir D] [--models-dir D] [--key-file F] [--port N]
 
 - the api_key comes from --key-file (default <strata-dir>/api_key.txt); the value is
   never printed. Refuses to write a config that listens on 0.0.0.0 without a key.
+- the optional "vision" block (images): its exe resolves from <strata-dir>/engine,
+  its mmproj from --models-dir (where Strata's setup downloads it, --vision gpu).
+  A template that carries a vision block must also carry --vision in args (and the
+  --vram-reserve-mib value it was tuned with); finalize refuses an inconsistent pair.
 - if Strata's setup already wrote its own run config (strata-*.json in the Strata
   folder) for the same GPU layout, its calibrated --pcie-frac / --spec-min-p win
   over the template's (they were measured on this PC).
@@ -114,6 +118,39 @@ def apply_calibrated(args: list[str], settings: dict[str, str]) -> list[str]:
     return out
 
 
+def check_vision(cfg: dict[str, Any], gguf_dir: Path) -> None:
+    """A config with a vision block must serve images: --vision in the engine args
+    (the encoder is built at server start only when the flag is there) and a
+    --vram-reserve-mib that leaves room for the resident encoder (~1.2 GiB; the
+    tuned templates use upstream's 700)."""
+    vis = cfg.get("vision")
+    if not isinstance(vis, dict):
+        return
+    missing = [k for k in ("exe", "mmproj", "model") if not str(vis.get(k, "")).strip()]
+    if missing:
+        raise SystemExit(f"error: the vision block is missing keys: {', '.join(missing)}")
+    mm = Path(str(vis["mmproj"]))
+    if not mm.is_file():                       # setup keeps the mmproj beside the model it downloaded
+        alt = gguf_dir / mm.name               # (a --model-dir install: the mmproj may live there instead)
+        if alt.is_file():
+            vis["mmproj"] = str(alt)
+            mm = alt
+    for k in ("exe", "mmproj", "model"):
+        p = Path(str(vis[k]))
+        if not p.is_file():
+            raise SystemExit(f"error: vision {k} does not exist: {p}\n"
+                             "  (strata-vision is built and the mmproj downloaded by Strata's setup: re-run "
+                             "./install-strata-<N>gpu.sh — it now passes --vision gpu)")
+    args = list(cfg.get("args", []))
+    if "--vision" not in args:
+        args.append("--vision")
+        cfg["args"] = args
+        print("[finalize] vision block present but --vision was absent from args: added it")
+    if "--vram-reserve-mib" not in args:
+        cfg["args"] = args + ["--vram-reserve-mib", "700"]
+        print("[finalize] vision block present: added --vram-reserve-mib 700 (room for the encoder)")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Resolve a Strata run-config template for this install.")
     ap.add_argument("template")
@@ -121,6 +158,7 @@ def main() -> int:
     ap.add_argument("--strata-dir", default=str(REPO / "Strata"))
     ap.add_argument("--data-dir", default=str(REPO / "Strata-data"))
     ap.add_argument("--gguf-dir", default=None, help="folder holding both IQ3_S shards (default: <data-dir>/models)")
+    ap.add_argument("--models-dir", default=None, help="folder holding the mmproj vision encoder (default: <data-dir>/models)")
     ap.add_argument("--key-file", default=None, help="file holding the api_key value (default: <strata-dir>/api_key.txt)")
     ap.add_argument("--port", type=int, default=None)
     ap.add_argument("--gpu-ids", default=None, help='override the config\'s "gpu" (nvidia-smi numbering, e.g. "1,0")')
@@ -129,6 +167,7 @@ def main() -> int:
     strata_dir = Path(a.strata_dir).resolve()
     data_dir = Path(a.data_dir).resolve()
     gguf_dir = Path(a.gguf_dir).resolve() if a.gguf_dir else data_dir / "models"
+    models_dir = Path(a.models_dir).resolve() if a.models_dir else data_dir / "models"
     key_file = Path(a.key_file) if a.key_file else strata_dir / "api_key.txt"
 
     cfg = load_json(Path(a.template))
@@ -137,6 +176,7 @@ def main() -> int:
         "STRATA_DIR": str(strata_dir),
         "DATA_DIR": str(data_dir),
         "GGUF_DIR": str(gguf_dir),
+        "MODELS_DIR": str(models_dir),
     })
 
     if a.gpu_ids:
@@ -160,6 +200,9 @@ def main() -> int:
 
     # per-PC calibration beats the author's numbers on a different box
     adopt_from_setup(cfg, strata_dir)
+
+    # images: a vision block and the --vision engine flag must go together
+    check_vision(cfg, gguf_dir)
 
     if a.port:
         cfg["port"] = a.port
